@@ -4,17 +4,17 @@ import cn.hutool.core.io.FileUtil;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.*;
 import com.github.dockerjava.api.model.*;
-import com.zyj.model.sandbox.lang.LanguageEnum;
 import com.zyj.api.sandbox.strategy.CompilationStrategy;
 import com.zyj.model.sandbox.SandboxExecutionInput;
 import com.zyj.model.sandbox.SandboxExecutionOutput;
+import com.zyj.model.sandbox.lang.LanguageEnum;
 import lombok.AllArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.*;
 
@@ -39,6 +39,9 @@ public abstract class AbstractSandBox implements SandBox {
 
     protected final CompilationStrategy compilationStrategy;
 
+    private final ExecutorService threadPool =
+            new ThreadPoolExecutor(CORE_POOL_SIZE, MAXIMUM_POOL_SIZE, KEEP_ALIVE_TIME, TimeUnit.SECONDS, new ArrayBlockingQueue<>(2, true), Executors.defaultThreadFactory(), new ThreadPoolExecutor.AbortPolicy());
+
     protected final PullImageResultCallback pullImageResultCallback = new PullImageResultCallback() {
         @Override
         public void onNext(PullResponseItem item) {
@@ -53,17 +56,18 @@ public abstract class AbstractSandBox implements SandBox {
         }
     };
 
-
     public SandboxExecutionOutput execute(SandboxExecutionInput input) {
-        try (dockerClient) {
+        String containerId = null;
+        File originalCodeFile = null;
+        try {
             // 1.将用户的代码保存为文件
-            File originalCodeFile = saveOriginalCodeTofile(input.getOriginalCode());
+            originalCodeFile = saveOriginalCodeTofile(input.getOriginalCode());
             if (!isImageExist(input.getLanguage())) {
                 // 2.拉取对应的镜像
                 pullImage();
             }
             // 3.创建容器
-            String containerId = createContainer(input.getLanguage(), originalCodeFile);
+            containerId = createContainer(input.getLanguage(), originalCodeFile);
             // 4.启动容器
             startContainer(containerId);
 
@@ -71,25 +75,24 @@ public abstract class AbstractSandBox implements SandBox {
             compilationStrategy.compile(containerId);
 
             // 6.执行命令并获取结果
-            SandboxExecutionOutput sandboxExecutionOutput = execCommand(containerId, input.getInputList());
-
-            ExecutorService threadPool =
-                    new ThreadPoolExecutor(CORE_POOL_SIZE, MAXIMUM_POOL_SIZE, KEEP_ALIVE_TIME, TimeUnit.SECONDS, new ArrayBlockingQueue<>(2, true), Executors.defaultThreadFactory(), new ThreadPoolExecutor.AbortPolicy());
-            try {
-                // 7.1停止容器
-                // 7.2删除容器
-                // 7.3删除本地生成的文件
-                CompletableFuture
-                        .allOf(CompletableFuture.runAsync(() -> stopContainer(containerId), threadPool)
-                                                .thenRunAsync(() -> removeContainer(containerId), threadPool),
-                                CompletableFuture.runAsync(() -> removeLocalDirectory(originalCodeFile), threadPool))
-                        .join();
-            } finally {
-                threadPool.shutdown();
-            }
-            return sandboxExecutionOutput;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            return execCommand(containerId, input.getInputList());
+        } finally {
+            // 7.1停止容器
+            // 7.2删除容器
+            CompletableFuture<Void> task1 = Optional.ofNullable(containerId)
+                                                    .map((id) -> CompletableFuture.runAsync(() -> stopContainer(id), threadPool)
+                                                                                  .thenRunAsync(() -> removeContainer(id), threadPool))
+                                                    .orElseGet(() -> CompletableFuture.runAsync(() -> {
+                                                    }));
+            // 7.3删除本地生成的文件
+            CompletableFuture<Void> task2 = Optional.ofNullable(originalCodeFile)
+                                                    .map((file -> CompletableFuture.runAsync(() -> removeLocalDirectory(file), threadPool)))
+                                                    .orElseGet(() -> CompletableFuture.runAsync(() -> {
+                                                    }));
+            CompletableFuture
+                    .allOf(task1, task2)
+                    .join();
+            threadPool.shutdown();
         }
     }
 

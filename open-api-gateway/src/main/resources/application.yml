@@ -1,2 +1,13 @@
 server:
   port: 8081
+spring:
+  cloud:
+    gateway:
+      #路由配置
+      routes:
+        #唯一标识符
+        - id: sandbox
+          uri: lb://hailtaxi-driver
+          #路由断言
+          predicates:
+            - Path=/driver/**

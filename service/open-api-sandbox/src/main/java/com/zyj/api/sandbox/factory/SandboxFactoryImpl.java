@@ -5,7 +5,9 @@ import com.zyj.api.sandbox.isolation.java.Java17Sandbox;
 import com.zyj.api.sandbox.isolation.java.Java8Sandbox;
 import com.zyj.api.sandbox.isolation.python.Python3Sandbox;
 import com.zyj.model.sandbox.lang.LanguageEnum;
+import org.springframework.stereotype.Component;
 
+@Component
 public class SandboxFactoryImpl implements SandboxFactory {
     @Override
     public AbstractSandBox getSandBox(LanguageEnum language) {
