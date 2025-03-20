@@ -1,5 +1,3 @@
-server:
-  port: 8081
 spring:
   cloud:
     gateway:
@@ -7,7 +5,21 @@ spring:
       routes:
         #唯一标识符
         - id: sandbox
-          uri: lb://hailtaxi-driver
+          uri: lb://sandbox
           #路由断言
           predicates:
-            - Path=/driver/**
+            - Path=/sandbox/**
+      discovery:
+        locator:
+          enabled: true
+knife4j:
+  gateway:
+    # 开起网关聚合文档
+    enabled: true
+    # 指定服务发现的模式聚合微服务文档，并且是默认 default 分组
+    strategy: discover
+    # 服务发现
+    discover:
+      enabled: true
+      version: openapi3
+#      excluded-services: ${spring.application.name}

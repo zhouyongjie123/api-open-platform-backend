@@ -15,4 +15,18 @@ public class ResponseResult<T> {
     private String message;
 
     private T data;
+
+    public static <T> ResponseResult<T> ok() {
+        return new ResponseResult<T>()
+                .setCode(ResponseStatus.OK.getCode())
+                .setMessage(ResponseStatus.OK.getMessage())
+                .setData(null);
+    }
+
+    public static <T> ResponseResult<T> ok(T data) {
+        return new ResponseResult<T>()
+                .setCode(ResponseStatus.OK.getCode())
+                .setMessage(ResponseStatus.OK.getMessage())
+                .setData(data);
+    }
 }

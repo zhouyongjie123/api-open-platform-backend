@@ -14,7 +14,6 @@ import org.apache.commons.lang3.StringUtils;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.*;
 
@@ -77,18 +76,24 @@ public abstract class AbstractSandBox implements SandBox {
             // 6.执行命令并获取结果
             return execCommand(containerId, input.getInputList());
         } finally {
-            // 7.1停止容器
-            // 7.2删除容器
-            CompletableFuture<Void> task1 = Optional.ofNullable(containerId)
-                                                    .map((id) -> CompletableFuture.runAsync(() -> stopContainer(id), threadPool)
-                                                                                  .thenRunAsync(() -> removeContainer(id), threadPool))
-                                                    .orElseGet(() -> CompletableFuture.runAsync(() -> {
-                                                    }));
-            // 7.3删除本地生成的文件
-            CompletableFuture<Void> task2 = Optional.ofNullable(originalCodeFile)
-                                                    .map((file -> CompletableFuture.runAsync(() -> removeLocalDirectory(file), threadPool)))
-                                                    .orElseGet(() -> CompletableFuture.runAsync(() -> {
-                                                    }));
+            String finalContainerId = containerId;
+            CompletableFuture<Void> task1 = CompletableFuture.runAsync(() -> {
+                if (finalContainerId != null) {
+                    // 7.1停止容器
+                    stopContainer(finalContainerId);
+                    // 7.2删除容器
+                    removeContainer(finalContainerId);
+                }
+            }, threadPool);
+
+            File finalOriginalCodeFile = originalCodeFile;
+            CompletableFuture<Void> task2 = CompletableFuture.runAsync(() -> {
+                if (finalOriginalCodeFile != null) {
+                    // 7.3删除本地生成的文件
+                    removeLocalDirectory(finalOriginalCodeFile);
+                }
+            }, threadPool);
+
             CompletableFuture
                     .allOf(task1, task2)
                     .join();
